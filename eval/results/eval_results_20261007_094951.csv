@@ -1,0 +1,38 @@
+id,level,group,question,answerable,question_type,status,confidence,page,answer,supporting_text,correct,elapsed_s
+1,Easy,overview,Who is the CEO of Wesfarmers?,yes,overview,Not Found,,,Not found in the report,,False,5.85
+2,Easy,overview,Who is the CFO of Wesfarmers?,yes,overview,Not Found,,,Not found in the report,,False,33.69
+3,Easy,overview,How many team members does Wesfarmers have?,yes,overview,Not Found,High,,Not found in the report,,False,12.94
+4,Easy,overview,Where is Wesfarmers headquartered?,yes,overview,Not Found,Low,,Not found in the report,,False,17.69
+5,Easy,overview,What are the main businesses of Wesfarmers?,yes,overview,Not Found,Low,,Not found in the report,,False,66.32
+6,Easy,overview,How many Bunnings stores are there?,yes,overview,Found,High,22,506,Total Bunnings Group 511 10 (15) - 506,True,46.81
+7,Easy,overview,How many Kmart stores are there in Australia and New Zealand?,yes,overview,Not Found,High,,Not found in the report,,False,29.26
+8,Easy,overview,How many Officeworks stores are there?,yes,overview,Found,High,22,176 stores,Officeworks 173 7 (4) - 176,True,20.36
+9,Easy,financial,What was the revenue in FY2025?,yes,quantitative,Found,High,24,"AUD 45,700 million","Revenue 47,274 45,700 44,189 43,550 36,838",True,52.89
+10,Easy,financial,What was the net profit after tax in FY2025?,yes,quantitative,Found,High,1,"AUD 2,926 million","Net profit after tax 2,874 2,926 (1.8)",True,38.17
+11,Easy,financial,What was the basic EPS in FY2025?,yes,quantitative,Found,High,4,258.0 cps,Basic earnings per share (cps) 253.4 258.0 (1.8),True,55.73
+12,Easy,financial,What was the operating cash flow in FY2025?,yes,quantitative,Found,High,24,"AUD 4,568 million","Operating cash flows 4,272 4,568 4,594 4,179 2,301",True,32.61
+13,Easy,financial,What was the free cash flow in FY2025?,yes,quantitative,Found,High,24,"AUD 3,446 million","Free cash flows 3,992 3,446 3,225 3,627 1,110",True,40.74
+14,Easy,balance_sheet,What were total assets at 30 June 2025?,yes,quantitative,Found,High,24,"AUD 27,981 million","Total assets 28,884 27,981 27,309 26,546 27,286",True,50.33
+15,Easy,balance_sheet,What was shareholders equity at 30 June 2025?,yes,quantitative,Found,Low,24,"AUD 9,189 million","Net assets 9,189",True,40.33
+16,Easy,balance_sheet,What was net debt at 30 June 2025?,yes,quantitative,Ambiguous,High,,Multiple values found,,True,39.61
+17,Easy,balance_sheet,What was cash and cash equivalents at 30 June 2025?,yes,overview,Not Found,,,Not found in the report,,False,41.35
+18,Easy,risk,What are the material risks identified in the report?,yes,risk,Not Found,Low,,Not found in the report,,False,45.1
+19,Easy,risk,What is the cyber security risk described in the report?,yes,risk,Not Found,High,,Not found in the report,,False,55.65
+20,Easy,risk,What actions has Wesfarmers taken to manage cyber risk?,yes,risk,Not Found,Low,,Not found in the report,,False,59.46
+21,Medium,comparison,How did revenue change from FY2024 to FY2025?,yes,comparison,Not Found,Low,,FY2024: Not found in the report | FY2025: Not found in the report,,False,122.01
+22,Medium,comparison,How did net profit after tax change from FY2024 to FY2025?,yes,comparison,Found,Medium,24,FY2024: AUD 369 million increase | FY2025: Net profit after tax increased by $369 million in FY2025 compared to FY2024. | Change: increased by 0.00 AUD million (+0.0%),"NPAT 2,874 2,926 2,557 2,465 2,352",True,68.46
+23,Medium,financial,Which division had the highest revenue in FY2025?,yes,quantitative,Found,High,6,Bunnings Group,"Revenue 
+20,399 
+19,595",True,52.99
+24,Medium,financial,Which divisions had lower earnings than FY2024?,yes,overview,Not Found,Low,,Not found in the report,,False,23.13
+25,Medium,comparison,What was Bunnings revenue in FY2024 versus FY2025?,yes,comparison,Not Found,Low,,FY2024: Not found in the report | FY2025: Not found in the report,,False,1.5
+26,Medium,comparison,What was Kmart earnings before tax in FY2024 versus FY2025?,yes,comparison,Ambiguous,Low,8,"FY2024: Not found in the report | FY2025: AUD 1,046 million","EBT 1,109 1,046 6.0",True,99.24
+27,Medium,comparison,How did total assets change from FY2024 to FY2025?,yes,comparison,Not Found,Low,,FY2024: Not found in the report | FY2025: Not found in the report,,False,2.03
+28,Medium,comparison,How did shareholders equity change from FY2024 to FY2025?,yes,comparison,Found,Medium,24,"FY2024: Shareholders equity increased by AUD 604 million from FY2024 to FY2025, with FY2024 equity at AUD 8,585 million. | FY2025: Shareholders equity increased by AUD 604 million in FY2025 compared to FY2024. | Change: increased by 0.00 AUD million (+0.0%)","Net assets 7,977 9,189 8,585 8,281 7,981",True,102.79
+29,Medium,comparison,How did the gearing ratio change from FY2024 to FY2025?,yes,comparison,Ambiguous,Low,4,FY2024: Not found in the report | FY2025: The gearing ratio (Debt to EBITDA excluding significant items) was 1.7 times in FY2025.,Debt to EBITDA (excluding significant items)b (x) 1.9 1.7,True,101.94
+30,Medium,risk,What risks relate to customer expectations and changing consumer preferences?,yes,risk,Not Found,Low,,Not found in the report,,False,10.49
+31,Hard,edge_case,What was the dividend per share in FY2030?,no,quantitative,Not Found,Low,,Not found in the report,,True,33.5
+32,Hard,edge_case,What was Wesfarmers Bank total assets in FY2025?,yes,quantitative,Not Found,High,,Not found in the report,,False,45.64
+33,Hard,edge_case,What was revenue in FY2022?,yes,quantitative,Not Found,Low,,Not found in the report,,False,1.04
+34,Hard,edge_case,What is the total equity?,yes,quantitative,Found,High,24,"AUD 7,977 million","Net assets 7,977",True,38.62
+35,Hard,edge_case,What were capital expenditures in FY2025?,yes,overview,Not Found,Low,,Not found in the report,,False,1.69
