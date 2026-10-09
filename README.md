@@ -56,22 +56,25 @@ streamlit run app.py
 ## 🏗️ Project Structure
 
 ```
-fyp-aus/
-├── app.py          # Streamlit UI
-├── ingest.py       # PDF page + table extraction
-├── index.py        # BM25 search index
-├── metrics.py      # Finance synonym dictionary
-├── router.py       # Question classifier
-├── prompts.py      # LLM prompt templates
-├── extract.py      # LLM call + JSON parser
-├── verify.py       # Post-LLM quote verification
-├── compare.py      # Year-on-year comparison logic
-├── export.py       # Excel workbook builder
+annual-report-qa/
+├── app.py              # Streamlit UI front-end
+├── requirements.txt    # Production dependencies
+├── src/
+│   ├── ingest.py       # PDF page + table extraction (PyMuPDF + pdfplumber)
+│   ├── index.py        # BM25 lexical search index
+│   ├── metrics.py      # Financial synonym vocabulary & query expansion
+│   ├── router.py       # 4-way question classification & retrieval config
+│   ├── prompts.py      # Strict JSON-enforced LLM prompt templates
+│   ├── extract.py      # Multi-provider LLM caller with rate-limit retry
+│   ├── verify.py       # Deterministic Python quote & number verification
+│   ├── compare.py      # Multi-year extraction & Python arithmetic
+│   └── export.py       # Multi-sheet Excel workbook builder
 ├── eval/
-│   ├── run_eval.py # Evaluation script
-│   ├── questions.csv
-│   └── results/    # Timestamped evaluation CSVs
-└── requirements.txt
+│   ├── run_eval.py     # Evaluation benchmark harness
+│   ├── questions.csv   # Ground-truth test battery
+│   └── results/        # Timestamped evaluation CSVs
+└── data/sample/
+    └── wesfarmers_annual_report.pdf # Sample report for testing
 ```
 
 ---

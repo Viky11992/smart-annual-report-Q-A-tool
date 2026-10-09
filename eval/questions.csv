@@ -1,36 +1,36 @@
 id,level,group,question,correct_answer,correct_page,answerable
 1,Easy,overview,Who is the CEO of Wesfarmers?,Rob Scott,1,yes
-2,Easy,overview,Who is the CFO of Wesfarmers?,Anthony Gianotti,1,yes
-3,Easy,overview,How many team members does Wesfarmers have?,,,yes
-4,Easy,overview,Where is Wesfarmers headquartered?,Perth Western Australia,,yes
-5,Easy,overview,What are the main businesses of Wesfarmers?,"Bunnings, Kmart Group, Officeworks, WesCEF, Industrial and Safety, Health",,yes
-6,Easy,overview,How many Bunnings stores are there?,,, yes
-7,Easy,overview,How many Kmart stores are there in Australia and New Zealand?,,, yes
-8,Easy,overview,How many Officeworks stores are there?,,, yes
-9,Easy,financial,What was the revenue in FY2025?,,, yes
-10,Easy,financial,What was the net profit after tax in FY2025?,,, yes
-11,Easy,financial,What was the basic EPS in FY2025?,,, yes
-12,Easy,financial,What was the operating cash flow in FY2025?,,, yes
-13,Easy,financial,What was the free cash flow in FY2025?,,, yes
-14,Easy,balance_sheet,What were total assets at 30 June 2025?,,, yes
-15,Easy,balance_sheet,What was shareholders equity at 30 June 2025?,,, yes
-16,Easy,balance_sheet,What was net debt at 30 June 2025?,,, yes
-17,Easy,balance_sheet,What was cash and cash equivalents at 30 June 2025?,,, yes
-18,Easy,risk,What are the material risks identified in the report?,,, yes
-19,Easy,risk,What is the cyber security risk described in the report?,,, yes
-20,Easy,risk,What actions has Wesfarmers taken to manage cyber risk?,,, yes
-21,Medium,comparison,How did revenue change from FY2024 to FY2025?,,, yes
-22,Medium,comparison,How did net profit after tax change from FY2024 to FY2025?,,, yes
-23,Medium,financial,Which division had the highest revenue in FY2025?,,, yes
-24,Medium,financial,Which divisions had lower earnings than FY2024?,,, yes
-25,Medium,comparison,What was Bunnings revenue in FY2024 versus FY2025?,,, yes
-26,Medium,comparison,What was Kmart earnings before tax in FY2024 versus FY2025?,,, yes
-27,Medium,comparison,How did total assets change from FY2024 to FY2025?,,, yes
-28,Medium,comparison,How did shareholders equity change from FY2024 to FY2025?,,, yes
-29,Medium,comparison,How did the gearing ratio change from FY2024 to FY2025?,,, yes
-30,Medium,risk,What risks relate to customer expectations and changing consumer preferences?,,, yes
+2,Easy,overview,Who is the CFO of Wesfarmers?,Not found in this report,,no
+3,Easy,overview,How many team members does Wesfarmers have?,Not found in this report,,no
+4,Easy,overview,Where is Wesfarmers headquartered?,Perth Western Australia,,no
+5,Easy,overview,What are the main businesses of Wesfarmers?,"Bunnings Group, Kmart Group, WesCEF, Officeworks, Industrial and Safety, Wesfarmers Health",1,yes
+6,Easy,overview,How many Bunnings stores are there?,511 stores (2025) / 506 stores (2026),23,yes
+7,Easy,overview,How many Kmart stores are there in Australia and New Zealand?,447 stores (2025) / 445 stores (2026),23,yes
+8,Easy,overview,How many Officeworks stores are there?,173 stores (2025) / 176 stores (2026),23,yes
+9,Easy,financial,What was the revenue in FY2025?,AUD 45700 million,4,yes
+10,Easy,financial,What was the net profit after tax in FY2025?,AUD 2926 million,4,yes
+11,Easy,financial,What was the basic EPS in FY2025?,258.0 cps,4,yes
+12,Easy,financial,What was the operating cash flow in FY2025?,AUD 4568 million,4,yes
+13,Easy,financial,What was the free cash flow in FY2025?,AUD 3446 million,4,yes
+14,Easy,balance_sheet,What were total assets at 30 June 2025?,AUD 27981 million,24,yes
+15,Easy,balance_sheet,What was shareholders equity at 30 June 2025?,AUD 9189 million,24,yes
+16,Easy,balance_sheet,What was net debt at 30 June 2025?,AUD 4231 million or AUD 4326 million,4,yes
+17,Easy,balance_sheet,What was cash and cash equivalents at 30 June 2025?,Not found in this report,,no
+18,Easy,risk,What are the material risks identified in the report?,Not found in this report,,no
+19,Easy,risk,What is the cyber security risk described in the report?,Not found in this report,,no
+20,Easy,risk,What actions has Wesfarmers taken to manage cyber risk?,Not found in this report,,no
+21,Medium,comparison,How did revenue change from FY2024 to FY2025?,Increased by AUD 1511 million (+3.4%),24,yes
+22,Medium,comparison,How did net profit after tax change from FY2024 to FY2025?,Increased by AUD 369 million (+14.4%),24,yes
+23,Medium,financial,Which division had the highest revenue in FY2025?,Bunnings Group (AUD 19595 million),25,yes
+24,Medium,financial,Which divisions had lower earnings than FY2024?,Chemicals Energy and Fertilisers,26,yes
+25,Medium,comparison,What was Bunnings revenue in FY2024 versus FY2025?,FY2024: AUD 18968 million | FY2025: AUD 19595 million,25,yes
+26,Medium,comparison,What was Kmart earnings before tax in FY2024 versus FY2025?,FY2024: AUD 958 million | FY2025: AUD 1046 million,25,yes
+27,Medium,comparison,How did total assets change from FY2024 to FY2025?,Increased by AUD 672 million (+2.5%),24,yes
+28,Medium,comparison,How did shareholders equity change from FY2024 to FY2025?,Increased by AUD 604 million (+7.0%),24,yes
+29,Medium,comparison,How did the gearing ratio change from FY2024 to FY2025?,Not found in this report,,no
+30,Medium,risk,What risks relate to customer expectations and changing consumer preferences?,Not found in this report,,no
 31,Hard,edge_case,What was the dividend per share in FY2030?,Not found in the report,,no
-32,Hard,edge_case,What was Wesfarmers Bank total assets in FY2025?,,, yes
-33,Hard,edge_case,What was revenue in FY2022?,,, yes
-34,Hard,edge_case,What is the total equity?,,, yes
-35,Hard,edge_case,What were capital expenditures in FY2025?,,, yes
+32,Hard,edge_case,What was Wesfarmers Bank total assets in FY2025?,Not found in the report,,no
+33,Hard,edge_case,What was revenue in FY2022?,AUD 36838 million,24,yes
+34,Hard,edge_case,What is the total equity?,AUD 9189 million (2025) or AUD 7977 million (2026),24,yes
+35,Hard,edge_case,What were capital expenditures in FY2025?,AUD 1099 million,4,yes

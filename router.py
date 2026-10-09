@@ -39,7 +39,7 @@ _RISK_KEYWORDS = [
 ]
 
 _QUANTITATIVE_KEYWORDS = [
-    r"\brevenue\b", r"\bprofit\b", r"\beatings\b", r"\bebitda\b", r"\bebit\b",
+    r"\brevenue\b", r"\bprofit\b", r"\bearnings\b", r"\bebitda\b", r"\bebit\b",
     r"\beps\b", r"\bdividend\b", r"\bcash flow\b", r"\bcapex\b",
     r"\btotal assets\b", r"\btotal liabilities\b", r"\bnet debt\b",
     r"\bshareholders.equity\b", r"\bgearing\b", r"\bequity\b",
@@ -58,6 +58,7 @@ _OVERVIEW_KEYWORDS = [
     r"\bsector\b", r"\bmarket\b", r"\bstore\b", r"\boutlet\b",
     r"\bwho is\b", r"\bwhere is\b", r"\bwhat does\b", r"\bhow many\b",
     r"\bwhen was\b", r"\bwhat are the main\b",
+    r"\bmanaging director\b", r"\bhead office\b", r"\bregistered office\b",
 ]
 
 
@@ -83,11 +84,15 @@ def classify_question(question: str) -> QuestionType:
 def get_retrieval_config(question_type: QuestionType) -> dict:
     """
     Return retrieval parameters for a given question type.
+    - risk: top_k=15 (brief explicitly says risk questions need more chunks)
+    - overview: top_k=10 (CEO, HQ, store counts span multiple pages)
+    - quantitative: top_k=8, boost tables for financial figures
+    - comparison: top_k=8, boost tables for year-on-year lookups
     """
     configs = {
-        "quantitative": {"top_k": 6, "boost_tables": True},
-        "overview":     {"top_k": 5, "boost_tables": False},
-        "risk":         {"top_k": 10, "boost_tables": False},
-        "comparison":   {"top_k": 8, "boost_tables": True},
+        "quantitative": {"top_k": 8,  "boost_tables": True},
+        "overview":     {"top_k": 10, "boost_tables": False},
+        "risk":         {"top_k": 15, "boost_tables": False},
+        "comparison":   {"top_k": 8,  "boost_tables": True},
     }
     return configs[question_type]

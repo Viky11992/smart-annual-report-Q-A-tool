@@ -7,6 +7,38 @@ This ensures questions phrased one way still match pages that use different term
 # Each entry maps a canonical term to a list of synonyms (and vice versa).
 # Keys and values are all lower-case.
 SYNONYM_GROUPS: list[list[str]] = [
+    # CEO / Managing Director
+    ["ceo", "chief executive officer", "chief executive", "managing director",
+     "managing director and chief executive", "group managing director",
+     "executive leadership", "group ceo"],
+
+    # CFO / Finance Director
+    ["cfo", "chief financial officer", "finance director", "group cfo",
+     "chief financial", "head of finance"],
+
+    # Headquarters / Location
+    ["headquarters", "head office", "headquartered", "registered office",
+     "principal office", "corporate office", "based in", "location"],
+
+    # Number of employees / team members
+    ["employees", "team members", "workforce", "headcount",
+     "number of employees", "number of team members", "staff",
+     "people employed", "employed"],
+
+    # Material risks / risk management
+    ["material risk", "material risks", "principal risks", "key risks",
+     "risk management", "risk factors", "significant risks",
+     "identified risks", "risk overview"],
+
+    # Cyber risk
+    ["cyber", "cybersecurity", "cyber security", "cyber risk",
+     "information security", "data breach", "cyber attack",
+     "cyber threat", "it security", "digital security"],
+
+    # Stores / outlets
+    ["stores", "store network", "number of stores", "outlets",
+     "retail locations", "locations", "branches", "store count"],
+
     # Revenue
     ["revenue", "sales", "total revenue", "net revenue", "total sales",
      "revenue from operations", "total income", "operating revenue"],

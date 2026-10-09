@@ -46,7 +46,7 @@ Rules you MUST follow:
 3. Before returning a number from a table, confirm the column heading matches the requested year.
 4. State the figure scope as "Group" or the specific division/subsidiary name.
 5. If the answer is NOT in the excerpts, set status to "Not Found", answer to "Not found in the report", and all other fields to null.
-6. If multiple different values exist for the same metric (e.g. in different tables or sections), set status to "Ambiguous" and list each value in other_values with its own page and supporting_text.
+6. If multiple different values exist for the same metric (e.g. in different tables, or Group-level vs division-level, or FY2025 vs FY2024 columns), set status to "Ambiguous" and list each value in other_values with its own page and supporting_text.
 7. Set confidence: "High" if you found an exact match; "Medium" if you inferred it; "Low" if you are uncertain.
 8. Do NOT guess, calculate, or derive figures unless explicitly asked in a comparison question.
 9. Return only the JSON object. No markdown code fences, no extra text.
@@ -67,12 +67,24 @@ SYSTEM_MESSAGE = (
 # Prompt builders
 # ---------------------------------------------------------------------------
 
-def _format_chunks(chunks: list) -> str:
+def _format_chunks(chunks: list, max_total_chars: int = 14000) -> str:
+    """
+    Format retrieved chunks into excerpts string.
+    Caps total characters to ~14,000 chars (~3,500 tokens) so that total prompt
+    stays safely well under the 7,500 TPM limit and processes fast.
+    """
     parts = []
+    total_chars = 0
     for chunk in chunks:
-        parts.append(
-            f"--- Page {chunk.page_number} ---\n{chunk.text}"
-        )
+        entry = f"--- Page {chunk.page_number} ---\n{chunk.text}"
+        if total_chars + len(entry) > max_total_chars and parts:
+            # Add truncated entry if space remains
+            remaining = max_total_chars - total_chars
+            if remaining > 300:
+                parts.append(f"--- Page {chunk.page_number} ---\n{chunk.text[:remaining]}...")
+            break
+        parts.append(entry)
+        total_chars += len(entry)
     return "\n\n".join(parts)
 
 
@@ -108,9 +120,22 @@ ANNUAL REPORT EXCERPTS:
 
 INSTRUCTIONS:
 - Extract only factual information stated in the excerpts.
+- For LEADERSHIP questions (CEO, CFO, Managing Director, Chairman):
+    * Look for names in the Board of Directors section, letters to shareholders, or executive profiles.
+    * Include the person's full name and exact title as written in the report.
+    * The CEO may be titled "Managing Director and Chief Executive Officer" or similar.
+- For STORE COUNT questions (Bunnings stores, Kmart stores, Officeworks stores):
+    * Look for tables showing store or outlet counts by banner/brand.
+    * State the number and any qualifying region (e.g. Australia and New Zealand).
+- For EMPLOYEE / TEAM MEMBER questions:
+    * Look for "team members", "employees", "workforce", or "headcount" figures.
+    * State the number and whether it is full-time equivalent or headcount.
+- For HEADQUARTERS questions:
+    * Look for "registered office", "principal office", or "head office" in the report.
+    * State the city and state/country exactly as written.
+- For BUSINESS SEGMENTS / SUBSIDIARIES:
+    * List all subsidiaries or divisions mentioned in the report.
 - For lists (e.g. subsidiaries, business segments), include all items mentioned.
-- For people (CEO, CFO), include their full name and title.
-- For counts (stores, employees), state the exact number and any qualifying date or region.
 
 {OUTPUT_SCHEMA}"""
 

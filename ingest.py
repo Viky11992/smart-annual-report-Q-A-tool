@@ -62,8 +62,22 @@ def _detect_printed_page_number(text: str, pdf_index: int) -> int:
     return pdf_index + 1
 
 
+_YEAR_COL_RE = re.compile(r"\b(fy\s*\d{4}|\d{4})\b", re.IGNORECASE)
+
+
+def _is_year_header(cell: str) -> bool:
+    """Return True if the cell text looks like a fiscal year column heading."""
+    return bool(_YEAR_COL_RE.search(cell.strip()))
+
+
 def _table_to_markdown(table: list[list[Optional[str]]]) -> str:
-    """Convert a pdfplumber table (list of rows, each a list of cell strings) to markdown."""
+    """
+    Convert a pdfplumber table to markdown.
+
+    If the header row contains year-like columns (e.g. '2025', 'FY2025'),
+    each data row is annotated as 'Row label | Year: value | Year: value'
+    so the LLM can correctly identify which value belongs to which year.
+    """
     if not table:
         return ""
 
@@ -75,15 +89,32 @@ def _table_to_markdown(table: list[list[Optional[str]]]) -> str:
     if not rows:
         return ""
 
-    # Header row
     header = rows[0]
+    has_year_cols = any(_is_year_header(h) for h in header[1:])  # skip first col (row labels)
+
     lines = ["| " + " | ".join(header) + " |"]
     lines.append("| " + " | ".join(["---"] * len(header)) + " |")
+
     for row in rows[1:]:
         # Pad row to match header width
         while len(row) < len(header):
             row.append("")
-        lines.append("| " + " | ".join(row) + " |")
+
+        if has_year_cols:
+            # Annotate each cell with its column header for clarity
+            annotated = []
+            for col_idx, cell in enumerate(row):
+                if col_idx == 0:
+                    annotated.append(cell)  # row label — no annotation needed
+                elif cell:
+                    col_head = header[col_idx] if col_idx < len(header) else ""
+                    annotated.append(f"{col_head}: {cell}" if col_head else cell)
+                else:
+                    annotated.append("")
+            lines.append("| " + " | ".join(annotated) + " |")
+        else:
+            lines.append("| " + " | ".join(row) + " |")
+
     return "\n".join(lines)
 
 

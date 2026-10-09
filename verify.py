@@ -27,8 +27,12 @@ def _normalise(text: str) -> str:
 
 def _quote_appears_on_page(supporting_text: str, page: PageData) -> bool:
     """
-    Check if the supporting_text (or a long enough substring) appears in page.full_text.
-    Uses a sliding window of 40 characters for fuzzy match tolerance.
+    Check if the supporting_text (or a meaningful portion of it) appears in page.full_text.
+
+    Strategy (in order of strictness):
+    1. Direct normalised substring match (exact)
+    2. Any 30-char sliding window from the quote found in the page (handles PDF whitespace noise)
+    3. Token-level Jaccard similarity >= 0.6 (handles reordered words / OCR artifacts)
     """
     if not supporting_text:
         return False
@@ -36,17 +40,27 @@ def _quote_appears_on_page(supporting_text: str, page: PageData) -> bool:
     norm_quote = _normalise(supporting_text)
     norm_page = _normalise(page.full_text)
 
-    # Direct substring match
+    # 1. Direct substring match
     if norm_quote in norm_page:
         return True
 
-    # Try shorter windows in case there are minor whitespace diffs
-    window = 40
+    # 2. Sliding window — any 30-char span from the quote found on the page
+    window = 30
     if len(norm_quote) >= window:
-        snippet = norm_quote[:window]
-        return snippet in norm_page
+        step = max(1, window // 2)
+        for start in range(0, len(norm_quote) - window + 1, step):
+            snippet = norm_quote[start:start + window]
+            if snippet in norm_page:
+                return True
 
-    return norm_quote in norm_page
+    # 3. Token-overlap Jaccard similarity
+    quote_tokens = set(norm_quote.split())
+    page_tokens = set(norm_page.split())
+    if not quote_tokens:
+        return False
+    intersection = quote_tokens & page_tokens
+    jaccard = len(intersection) / len(quote_tokens)  # recall-oriented
+    return jaccard >= 0.6
 
 
 def _number_in_text(numeric_value: float | int | None, supporting_text: str) -> bool:

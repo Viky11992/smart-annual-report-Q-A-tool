@@ -16,7 +16,6 @@ Layout (top to bottom):
 from __future__ import annotations
 
 import os
-import tempfile
 import time
 from typing import Any
 
@@ -36,8 +35,10 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Local imports (after st.set_page_config)
-# ──────────────────────────────────────────────────────────────────────────────
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from ingest import ingest_pdf
 from index import AnnualReportIndex
 from router import classify_question, get_retrieval_config
@@ -45,6 +46,30 @@ from extract import extract_answer
 from verify import verify_answer
 from compare import answer_comparison
 from export import build_excel
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cached PDF ingestion (keyed by file bytes — re-uploading same file is instant)
+# ──────────────────────────────────────────────────────────────────────────────
+MAX_PDF_BYTES = 50 * 1024 * 1024  # 50 MB hard limit
+
+
+@st.cache_data(show_spinner=False)
+def _cached_ingest(pdf_bytes: bytes, filename: str):
+    """
+    Ingest and index a PDF. Cached by file content so the same file
+    is only processed once per Streamlit session (or until the cache is cleared).
+    """
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = tmp.name
+    try:
+        pages = ingest_pdf(tmp_path)
+        idx = AnnualReportIndex(pages)
+    finally:
+        os.unlink(tmp_path)
+    return pages, idx
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -162,18 +187,20 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    # Only re-ingest if the file changed
+    # ── File size guard ────────────────────────────────────────────────────
+    pdf_bytes = uploaded_file.getvalue()
+    if len(pdf_bytes) > MAX_PDF_BYTES:
+        st.error(
+            f"⚠️ File too large ({len(pdf_bytes) // (1024*1024)} MB). "
+            "Please use a PDF under 50 MB. Streamlit Cloud has a 60-second timeout."
+        )
+        st.stop()
+
+    # ── Only re-ingest if the file content actually changed ───────────────
     if uploaded_file.name != st.session_state.pdf_name:
         with st.spinner(f"Reading **{uploaded_file.name}** — extracting text and tables…"):
-            # Write to a temp file so PyMuPDF / pdfplumber can open it
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp.write(uploaded_file.read())
-                tmp_path = tmp.name
-
             progress = st.progress(0, text="Ingesting pages…")
-            pages = ingest_pdf(tmp_path)
-            progress.progress(60, text="Building search index…")
-            idx = AnnualReportIndex(pages)
+            pages, idx = _cached_ingest(pdf_bytes, uploaded_file.name)
             progress.progress(100, text="Done!")
             time.sleep(0.4)
             progress.empty()
@@ -186,6 +213,7 @@ if uploaded_file is not None:
 
 elif st.session_state.pdf_name:
     st.info(f"📄 Currently loaded: **{st.session_state.pdf_name}**")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Question Input

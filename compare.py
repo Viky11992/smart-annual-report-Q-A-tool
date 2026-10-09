@@ -23,21 +23,48 @@ from index import AnnualReportIndex
 _FY_RE = re.compile(r"\bfy\s*(\d{4})\b", re.IGNORECASE)
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 
+# Default fiscal years used when the question contains no explicit year references
+_DEFAULT_YEAR_A = "FY2024"
+_DEFAULT_YEAR_B = "FY2025"
+
 
 def _extract_years(question: str) -> list[str]:
-    """Extract fiscal year labels from the question, e.g. ['FY2024', 'FY2025']."""
-    years = []
+    """
+    Extract fiscal year labels from the question, e.g. ['FY2024', 'FY2025'].
+    Falls back to [_DEFAULT_YEAR_A, _DEFAULT_YEAR_B] when none are found.
+    """
+    years: list[str] = []
     for m in _FY_RE.finditer(question):
         years.append(f"FY{m.group(1)}")
     if not years:
         for m in _YEAR_RE.finditer(question):
-            years.append(m.group(1))
-    return list(dict.fromkeys(years))  # deduplicate preserving order
+            years.append(f"FY{m.group(1)}")
+    unique = list(dict.fromkeys(years))  # deduplicate, preserve order
+    # If we only found one year, add the adjacent year
+    if len(unique) == 1:
+        yr = int(unique[0].replace("FY", ""))
+        other = f"FY{yr - 1}" if unique[0] == _DEFAULT_YEAR_B else f"FY{yr + 1}"
+        unique = [f"FY{yr - 1}", unique[0]] if unique[0] == _DEFAULT_YEAR_B else [unique[0], other]
+    # If still empty, use defaults
+    if not unique:
+        unique = [_DEFAULT_YEAR_A, _DEFAULT_YEAR_B]
+    return unique[:2]  # always return exactly two years
 
 
 def _make_year_question(original: str, year: str) -> str:
-    """Rewrite the question to target a specific year."""
-    return f"{original.strip()} — focus specifically on {year}."
+    """
+    Rewrite the question to target a specific year, removing relative terms.
+    Produces a clean, targeted sub-question for the LLM.
+    """
+    # Strip comparison noise from the question
+    q = original.strip()
+    q = re.sub(r"\s+from\s+fy\d{4}\s+to\s+fy\d{4}", "", q, flags=re.IGNORECASE)
+    q = re.sub(r"\s+fy\d{4}\s+(?:vs|versus|and)\s+fy\d{4}", "", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b(change|changed|how did|compare)\b", "", q, flags=re.IGNORECASE).strip()
+    q = re.sub(r"\s{2,}", " ", q).strip(" ?.,")
+    # Build clean targeted question
+    metric = q if q else "the requested metric"
+    return f"What was {metric} in {year}?"
 
 
 # ---------------------------------------------------------------------------
@@ -70,24 +97,13 @@ def answer_comparison(
 ) -> dict[str, Any]:
     """
     For a comparison question:
-    1. Extract the two years from the question
+    1. Extract (or infer) the two fiscal years
     2. For each year, retrieve chunks and call the LLM separately
     3. Verify each answer
     4. Calculate the change in Python
-    5. Return a combined result
+    5. Return a combined result with page_a and page_b explicitly
     """
     years = _extract_years(question)
-
-    if len(years) < 2:
-        # Fall back to single extraction if we can't find two years
-        from router import get_retrieval_config
-        cfg = get_retrieval_config("comparison")
-        chunks = index.search(question, top_k=cfg["top_k"], boost_tables=cfg["boost_tables"])
-        answer = extract_answer(question, "comparison", chunks)
-        answer = verify_answer(answer, pages)
-        answer["comparison"] = None
-        return answer
-
     year_a, year_b = years[0], years[1]
 
     results: dict[str, Any] = {}
@@ -95,8 +111,8 @@ def answer_comparison(
 
     for year in [year_a, year_b]:
         year_q = _make_year_question(question, year)
-        # Search with the year-specific question
-        chunks = index.search(year_q, top_k=8, boost_tables=True)
+        # Use top_k=10 and table boost for each year-specific sub-query
+        chunks = index.search(year_q, top_k=10, boost_tables=True)
         ans = extract_answer(year_q, "quantitative", chunks)
         ans = verify_answer(ans, pages)
         results[year] = ans
@@ -106,7 +122,7 @@ def answer_comparison(
     change = _compute_change(numeric_vals.get(year_a), numeric_vals.get(year_b))
     unit = results[year_b].get("unit") or results[year_a].get("unit")
 
-    # Build combined answer
+    # Build combined answer — expose page_a and page_b at the top level
     combined: dict[str, Any] = {
         "answer": _format_comparison_answer(results, year_a, year_b, change, unit),
         "numeric_value": numeric_vals.get(year_b),
@@ -115,12 +131,15 @@ def answer_comparison(
         "scope": results[year_b].get("scope") or results[year_a].get("scope"),
         "status": _combined_status(results, year_a, year_b),
         "confidence": _combined_confidence(results, year_a, year_b),
+        # Current year is the primary page reference
         "page": results[year_b].get("page"),
+        "page_a": results[year_a].get("page"),
+        "page_b": results[year_b].get("page"),
         "supporting_text": results[year_b].get("supporting_text"),
         "explanation": (
-            f"{year_a} value: {results[year_a].get('answer')} "
+            f"{year_a}: {results[year_a].get('answer')} "
             f"(page {results[year_a].get('page')}). "
-            f"{year_b} value: {results[year_b].get('answer')} "
+            f"{year_b}: {results[year_b].get('answer')} "
             f"(page {results[year_b].get('page')})."
         ),
         "other_values": [
@@ -156,6 +175,7 @@ def answer_comparison(
         },
     }
     return combined
+
 
 
 def _format_comparison_answer(

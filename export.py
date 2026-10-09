@@ -52,6 +52,7 @@ RESULTS_COLUMNS = [
     ("Status", 12),
     ("Confidence", 12),
     ("Page", 8),
+    ("Supporting Text", 60),
     ("Explanation", 55),
 ]
 
@@ -156,7 +157,8 @@ def build_excel(session_results: list[dict[str, Any]]) -> bytes:
         ws_results.cell(row=row, column=8, value=status)
         ws_results.cell(row=row, column=9, value=item.get("confidence", ""))
         ws_results.cell(row=row, column=10, value=item.get("page", ""))
-        ws_results.cell(row=row, column=11, value=item.get("explanation", ""))
+        ws_results.cell(row=row, column=11, value=item.get("supporting_text", ""))
+        ws_results.cell(row=row, column=12, value=item.get("explanation", ""))
 
         row_fill = _status_fill(status)
         _set_row_style(ws_results, row, len(RESULTS_COLUMNS), row_fill)
@@ -175,8 +177,10 @@ def build_excel(session_results: list[dict[str, Any]]) -> bytes:
         flags = "; ".join(verification.get("flags", [])) if verification else ""
 
         ws_sources.cell(row=row, column=1, value=i)
-        ws_sources.cell(row=row, column=2, value=item.get("question", ""))
-        ws_sources.cell(row=row, column=3, value=item.get("page", ""))
+        page_val = item.get("page", "")
+        if item.get("page_a") and item.get("page_b") and item.get("page_a") != item.get("page_b"):
+            page_val = f"{item.get('page_a')}, {item.get('page_b')}"
+        ws_sources.cell(row=row, column=3, value=page_val)
         ws_sources.cell(row=row, column=4, value=item.get("supporting_text", ""))
         ws_sources.cell(row=row, column=5, value=status)
         ws_sources.cell(row=row, column=6, value=flags)

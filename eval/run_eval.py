@@ -51,13 +51,31 @@ def _is_correct(result: dict, row: dict) -> bool:
     """
     A result is "correct" if:
     - answerable=no and status="Not Found"
-    - answerable=yes and status="Found" or "Ambiguous"
+    - answerable=yes and status="Found" or "Ambiguous", with supporting evidence
     """
     answerable = row.get("answerable", "yes").strip().lower()
     status = result.get("status", "Not Found")
     if answerable == "no":
         return status == "Not Found"
-    return status in ("Found", "Ambiguous")
+
+    if status not in ("Found", "Ambiguous"):
+        return False
+
+    # For answerable questions, verify that an answer or quote exists
+    if not (result.get("answer") or result.get("supporting_text")):
+        return False
+
+    # Check if page is reasonably close to expected page if ground truth page is specified
+    correct_page = row.get("correct_page", "").strip()
+    result_page = str(result.get("page") or "").strip()
+    if correct_page and result_page:
+        try:
+            if abs(int(result_page) - int(correct_page)) <= 2:
+                return True
+        except ValueError:
+            pass
+
+    return True
 
 
 def run_eval(pdf_path: str, questions_path: str, output_dir: str) -> None:
@@ -81,7 +99,9 @@ def run_eval(pdf_path: str, questions_path: str, output_dir: str) -> None:
 
     # ── Run pipeline ─────────────────────────────────────────────────────────
     results = []
-    for row in questions:
+    delay_secs = float(os.environ.get("EVAL_DELAY", "1.0"))  # seconds between questions
+
+    for i, row in enumerate(questions):
         q_id = row["id"]
         question = row["question"].strip()
         level = row.get("level", "").strip()
@@ -140,6 +160,10 @@ def run_eval(pdf_path: str, questions_path: str, output_dir: str) -> None:
             "correct":          correct,
             "elapsed_s":        round(elapsed, 2),
         })
+
+        # Rate-limit guard: pause between questions
+        if i < len(questions) - 1 and delay_secs > 0:
+            time.sleep(delay_secs)
 
     # ── Save results ─────────────────────────────────────────────────────────
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

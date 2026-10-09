@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from prompts import SYSTEM_MESSAGE, get_prompt
+from rate_limiter import limiter, estimate_prompt_tokens
 
 # ---------------------------------------------------------------------------
 # Answer schema default
@@ -111,6 +112,10 @@ def _call_groq(prompt: str, model: str) -> str:
             ],
             response_format={"type": "json_object"},
         )
+        tokens_used = getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") and resp.usage else 0
+        if tokens_used:
+            limiter.record_usage(tokens_used)
+        return resp.choices[0].message.content or ""
     except Exception:
         # Fallback without explicit response_format if model/client doesn't support it
         resp = client.chat.completions.create(
@@ -121,7 +126,10 @@ def _call_groq(prompt: str, model: str) -> str:
                 {"role": "user", "content": prompt},
             ],
         )
-    return resp.choices[0].message.content or ""
+        tokens_used = getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") and resp.usage else 0
+        if tokens_used:
+            limiter.record_usage(tokens_used)
+        return resp.choices[0].message.content or ""
 
 
 def _call_anthropic(prompt: str, model: str) -> str:
@@ -134,6 +142,11 @@ def _call_anthropic(prompt: str, model: str) -> str:
         system=SYSTEM_MESSAGE,
         messages=[{"role": "user", "content": prompt}],
     )
+    tokens_used = 0
+    if hasattr(msg, "usage") and msg.usage:
+        tokens_used = (getattr(msg.usage, "input_tokens", 0) or 0) + (getattr(msg.usage, "output_tokens", 0) or 0)
+    if tokens_used:
+        limiter.record_usage(tokens_used)
     return msg.content[0].text
 
 
@@ -148,6 +161,9 @@ def _call_openai(prompt: str, model: str) -> str:
             {"role": "user", "content": prompt},
         ],
     )
+    tokens_used = getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") and resp.usage else 0
+    if tokens_used:
+        limiter.record_usage(tokens_used)
     return resp.choices[0].message.content or ""
 
 
@@ -162,22 +178,58 @@ def _call_gemini(prompt: str, model: str) -> str:
         prompt,
         generation_config={"temperature": 0},
     )
+    tokens_used = 0
+    if hasattr(resp, "usage_metadata") and resp.usage_metadata:
+        tokens_used = getattr(resp.usage_metadata, "total_token_count", 0) or 0
+    if tokens_used:
+        limiter.record_usage(tokens_used)
     return resp.text
 
 
+import time as _time  # aliased to avoid shadowing
+
+
+def _call_with_retry(fn, *args, max_retries: int = 3, **kwargs) -> str:
+    """
+    Call fn(*args, **kwargs) with exponential backoff on transient failures.
+    Retries on RateLimitError, APIStatusError (429), or generic connection errors.
+    """
+    delay = 2.0
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            # Only retry on rate-limit / transient errors
+            if any(kw in exc_str for kw in ("rate", "429", "timeout", "connection", "overloaded")):
+                last_exc = exc
+                if attempt < max_retries - 1:
+                    _time.sleep(delay)
+                    delay *= 2  # exponential backoff
+            else:
+                raise  # non-retryable error — propagate immediately
+    raise last_exc  # type: ignore[misc]
+
+
 def _call_llm(prompt: str) -> str:
+    # Ensure token capacity before sending the request to keep usage under 7500 TPM
+    est_tokens = estimate_prompt_tokens(prompt)
+    limiter.wait_for_capacity(est_tokens)
+
     provider = os.environ.get("LLM_PROVIDER", "groq").lower()
     model = os.environ.get("LLM_MODEL", "")
     if provider == "groq":
-        return _call_groq(prompt, model)
+        return _call_with_retry(_call_groq, prompt, model)
     elif provider == "anthropic":
-        return _call_anthropic(prompt, model)
+        return _call_with_retry(_call_anthropic, prompt, model)
     elif provider == "openai":
-        return _call_openai(prompt, model)
+        return _call_with_retry(_call_openai, prompt, model)
     elif provider == "gemini":
-        return _call_gemini(prompt, model)
+        return _call_with_retry(_call_gemini, prompt, model)
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: {provider}")
+
 
 
 # ---------------------------------------------------------------------------
