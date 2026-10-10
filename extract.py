@@ -92,8 +92,9 @@ def _call_groq(prompt: str, model: str) -> str:
     elif model_name == "gpt-oss-120b":
         model_name = "openai/gpt-oss-120b"
 
+    import httpx
     from groq import Groq
-    client = Groq(api_key=api_key)
+    client = Groq(api_key=api_key, http_client=httpx.Client())
 
     try:
         resp = client.chat.completions.create(
