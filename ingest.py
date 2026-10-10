@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import pymupdf as fitz  # PyMuPDF (fitz alias for compatibility)
-import pdfplumber
 
 
 # ---------------------------------------------------------------------------
@@ -122,59 +121,79 @@ def _table_to_markdown(table: list[list[Optional[str]]]) -> str:
 # Main ingestion function
 # ---------------------------------------------------------------------------
 
-def ingest_pdf(pdf_path: str) -> list[PageData]:
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _is_financial_page(text: str, digit_threshold: int = 50) -> bool:
+    """
+    Heuristic check to determine if a page looks financial / tabular.
+    Returns True if the page contains at least `digit_threshold` digits.
+    This avoids running heavy pdfplumber parsing on pure narrative / text pages.
+    """
+    if not text:
+        return False
+    digits = len(_DIGIT_RE.findall(text))
+    return digits >= digit_threshold
+
+
+def ingest_pdf(
+    pdf_path: str,
+    progress_callback: Optional[callable] = None,
+) -> list[PageData]:
     """
     Read the PDF and return a list of PageData objects, one per page.
 
     Strategy:
-    - PyMuPDF for fast plain-text extraction
-    - pdfplumber for table extraction (it handles merged cells better)
-    - Detect printed page numbers from text
+    - PyMuPDF (fitz) for fast, low-memory plain-text extraction and page iteration.
+    - PyMuPDF native find_tables() on financial pages (runs in C++, extremely fast & low RAM).
+    - Keep only {pdf_page, printed_page, text, tables_markdown} per page.
+    - Never keep page images or raw PDF bytes after extraction.
+    - Closes documents in finally blocks.
     """
     pages: list[PageData] = []
 
-    # Open with pdfplumber for table extraction (we'll iterate in sync)
-    pdf_bytes = open(pdf_path, "rb").read()
-
     fitz_doc = fitz.open(pdf_path)
-    plumber_doc = pdfplumber.open(io.BytesIO(pdf_bytes))
-
     total_pages = len(fitz_doc)
 
-    for idx in range(total_pages):
-        fitz_page = fitz_doc[idx]
-        plumber_page = plumber_doc.pages[idx]
+    try:
+        for idx in range(total_pages):
+            fitz_page = fitz_doc[idx]
 
-        # --- Plain text ---
-        plain_text = fitz_page.get_text("text")  # type: ignore[attr-defined]
+            # --- Plain text via PyMuPDF ---
+            plain_text = fitz_page.get_text("text").strip()
 
-        # --- Detect printed page number ---
-        page_number = _detect_printed_page_number(plain_text, idx)
+            # --- Detect printed page number ---
+            page_number = _detect_printed_page_number(plain_text, idx)
 
-        # --- Tables ---
-        tables_md: list[str] = []
-        try:
-            raw_tables = plumber_page.extract_tables()
-            if raw_tables:
-                for raw_table in raw_tables:
-                    md = _table_to_markdown(raw_table)
-                    if md:
-                        tables_md.append(md)
-        except Exception:
-            pass  # If table extraction fails for a page, continue
+            # --- Tables: PyMuPDF native find_tables() on financial pages ---
+            tables_md: list[str] = []
+            if _is_financial_page(plain_text):
+                try:
+                    tabs = fitz_page.find_tables()
+                    for tab in tabs:
+                        raw_table = tab.extract()
+                        if raw_table:
+                            md = _table_to_markdown(raw_table)
+                            if md:
+                                tables_md.append(md)
+                except Exception:
+                    pass  # If table extraction fails for a page, continue
 
-        has_table = len(tables_md) > 0
+            has_table = len(tables_md) > 0
 
-        pages.append(PageData(
-            pdf_index=idx,
-            page_number=page_number,
-            text=plain_text.strip(),
-            tables_markdown=tables_md,
-            has_table=has_table,
-        ))
+            pages.append(PageData(
+                pdf_index=idx,
+                page_number=page_number,
+                text=plain_text,
+                tables_markdown=tables_md,
+                has_table=has_table,
+            ))
 
-    fitz_doc.close()
-    plumber_doc.close()
+            if progress_callback:
+                progress_callback(idx + 1, total_pages)
+
+    finally:
+        fitz_doc.close()
 
     return pages
 
@@ -185,3 +204,4 @@ def get_page_count(pdf_path: str) -> int:
     n = len(doc)
     doc.close()
     return n
+

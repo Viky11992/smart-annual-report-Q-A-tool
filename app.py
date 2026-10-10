@@ -47,27 +47,24 @@ from verify import verify_answer
 from compare import answer_comparison
 from export import build_excel
 
+import hashlib
+import tempfile
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Cached PDF ingestion (keyed by file bytes — re-uploading same file is instant)
+# Cached PDF ingestion (keyed by file hash — zero duplicate in-memory data copies)
 # ──────────────────────────────────────────────────────────────────────────────
-MAX_PDF_BYTES = 50 * 1024 * 1024  # 50 MB hard limit
+MAX_PDF_BYTES = 35 * 1024 * 1024  # 35 MB hard limit for Streamlit Cloud stability
 
 
-@st.cache_data(show_spinner=False)
-def _cached_ingest(pdf_bytes: bytes, filename: str):
+@st.cache_resource(show_spinner=False)
+def _cached_ingest(file_hash: str, tmp_pdf_path: str):
     """
-    Ingest and index a PDF. Cached by file content so the same file
-    is only processed once per Streamlit session (or until the cache is cleared).
+    Ingest and index a PDF, cached by sha256 hash.
+    Using @st.cache_resource stores the objects by reference rather than
+    pickling/duplicating them into memory.
     """
-    import tempfile, os
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = tmp.name
-    try:
-        pages = ingest_pdf(tmp_path)
-        idx = AnnualReportIndex(pages)
-    finally:
-        os.unlink(tmp_path)
+    pages = ingest_pdf(tmp_pdf_path)
+    idx = AnnualReportIndex(pages)
     return pages, idx
 
 
@@ -103,6 +100,8 @@ if "index" not in st.session_state:
     st.session_state.index = None
 if "pdf_name" not in st.session_state:
     st.session_state.pdf_name = None
+if "pdf_hash" not in st.session_state:
+    st.session_state.pdf_hash = None
 if "session_results" not in st.session_state:
     st.session_state.session_results = []
 if "question_input" not in st.session_state:
@@ -114,56 +113,36 @@ if "question_input" not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Configuration")
 
-    providers = ["groq", "anthropic", "openai", "gemini"]
-    current_provider = os.environ.get("LLM_PROVIDER", "groq").lower()
-    default_idx = providers.index(current_provider) if current_provider in providers else 0
+    # Read API Key from st.secrets first, then fall back to environment variable
+    secret_key = ""
+    try:
+        secret_key = st.secrets.get("GROQ_API_KEY", "")
+    except Exception:
+        pass
+    if not secret_key:
+        secret_key = os.environ.get("GROQ_API_KEY", "")
 
-    provider = st.selectbox(
-        "LLM Provider",
-        providers,
-        index=default_idx,
-        help="Choose which LLM to use for extraction. Groq provides ultra-fast free API inference.",
+    api_key = st.text_input(
+        "Groq API Key",
+        value=secret_key,
+        type="password",
+        help="Reads from Streamlit secrets (.streamlit/secrets.toml) or enter here.",
     )
-    os.environ["LLM_PROVIDER"] = provider
+    if api_key:
+        os.environ["GROQ_API_KEY"] = api_key
+    elif not secret_key:
+        st.warning("⚠️ GROQ_API_KEY is missing. Please add it to .streamlit/secrets.toml or input above.")
 
-    model_defaults = {
-        "groq":      "openai/gpt-oss-20b",
-        "anthropic": "claude-3-5-sonnet-20241022",
-        "openai":    "gpt-4o",
-        "gemini":    "gemini-1.5-pro",
-    }
     model = st.text_input(
         "Model name (optional)",
-        value=model_defaults.get(provider, ""),
-        help="Leave blank to use the default model for the selected provider.",
+        value="openai/gpt-oss-20b",
+        help="Default: openai/gpt-oss-20b via Groq.",
     )
     if model:
         os.environ["LLM_MODEL"] = model
 
-    key_env = {
-        "groq":      "GROQ_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai":    "OPENAI_API_KEY",
-        "gemini":    "GEMINI_API_KEY",
-    }
-    existing_key = os.environ.get(key_env[provider], "")
-    api_key = st.text_input(
-        "API Key",
-        value=existing_key,
-        type="password",
-        help="Your API key. Not stored — only used for this session.",
-    )
-    if api_key:
-        os.environ[key_env[provider]] = api_key
-
-    if provider == "groq":
-        st.caption("⚡ Get a free Groq API key at [console.groq.com](https://console.groq.com/keys)")
-
     st.markdown("---")
-    st.caption(
-        "API keys are stored only in memory for this session. "
-        "They are never written to disk or sent to GitHub."
-    )
+    st.caption("⚡ Get a free Groq API key at [console.groq.com](https://console.groq.com/keys)")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Header
@@ -187,29 +166,61 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    # ── File size guard ────────────────────────────────────────────────────
-    pdf_bytes = uploaded_file.getvalue()
-    if len(pdf_bytes) > MAX_PDF_BYTES:
+    # ── File size guard without holding duplicate copies in RAM ────────────
+    file_size = uploaded_file.size
+    if file_size > MAX_PDF_BYTES:
         st.error(
-            f"⚠️ File too large ({len(pdf_bytes) // (1024*1024)} MB). "
-            "Please use a PDF under 50 MB. Streamlit Cloud has a 60-second timeout."
+            f"⚠️ File too large ({file_size // (1024*1024)} MB). "
+            f"Please use a PDF under {MAX_PDF_BYTES // (1024*1024)} MB to ensure Streamlit Cloud memory limits are not exceeded."
         )
         st.stop()
 
-    # ── Only re-ingest if the file content actually changed ───────────────
-    if uploaded_file.name != st.session_state.pdf_name:
-        with st.spinner(f"Reading **{uploaded_file.name}** — extracting text and tables…"):
-            progress = st.progress(0, text="Ingesting pages…")
-            pages, idx = _cached_ingest(pdf_bytes, uploaded_file.name)
-            progress.progress(100, text="Done!")
-            time.sleep(0.4)
-            progress.empty()
+    # Read uploaded file content once to compute hash and write to temp file
+    file_bytes = uploaded_file.getvalue()
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-        st.session_state.pages = pages
-        st.session_state.index = idx
-        st.session_state.pdf_name = uploaded_file.name
-        st.session_state.session_results = []  # reset on new upload
-        st.success(f"✅ **{uploaded_file.name}** loaded — {len(pages)} pages indexed.")
+    # ── Only re-ingest if the file hash actually changed ──────────────────
+    if file_hash != st.session_state.pdf_hash:
+        progress_bar = st.progress(0, text="Starting document ingestion…")
+        status_placeholder = st.empty()
+
+        # Save to temp file on disk so PyMuPDF can read directly without holding bytes in memory
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+
+        # Free the uploaded bytes immediately
+        del file_bytes
+
+        try:
+            with st.spinner(f"Reading **{uploaded_file.name}** — extracting text and tables…"):
+                def update_progress(current_page: int, total_pages: int):
+                    pct = int((current_page / total_pages) * 100)
+                    progress_bar.progress(pct, text=f"Processing page {current_page} of {total_pages}…")
+
+                pages = ingest_pdf(tmp_path, progress_callback=update_progress)
+                idx = AnnualReportIndex(pages)
+
+            st.session_state.pages = pages
+            st.session_state.index = idx
+            st.session_state.pdf_name = uploaded_file.name
+            st.session_state.pdf_hash = file_hash
+            st.session_state.session_results = []  # reset on new document
+            progress_bar.progress(100, text="Indexing complete!")
+            time.sleep(0.3)
+            progress_bar.empty()
+            st.success(f"✅ **{uploaded_file.name}** loaded — {len(pages)} pages indexed.")
+        except Exception as e:
+            st.error(f"❌ Failed to ingest PDF: {e}")
+            st.stop()
+        finally:
+            import gc
+            gc.collect()
+            if os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
 elif st.session_state.pdf_name:
     st.info(f"📄 Currently loaded: **{st.session_state.pdf_name}**")
@@ -225,7 +236,7 @@ st.subheader("2️⃣  Ask a Question")
 st.caption("Try one of these:")
 btn_cols = st.columns(len(EXAMPLE_QUESTIONS))
 for i, (col, eq) in enumerate(zip(btn_cols, EXAMPLE_QUESTIONS)):
-    if col.button(eq, key=f"eq_{i}", use_container_width=True):
+    if col.button(eq, key=f"eq_{i}", width="stretch"):
         st.session_state.question_input = eq
 
 question = st.text_input(
@@ -247,36 +258,36 @@ ask_btn = st.button(
 # ──────────────────────────────────────────────────────────────────────────────
 if ask_btn and question.strip() and st.session_state.index is not None:
     # Check API key
-    key_env_map = {
-        "groq":      "GROQ_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai":    "OPENAI_API_KEY",
-        "gemini":    "GEMINI_API_KEY",
-    }
-    if not os.environ.get(key_env_map[provider]):
-        st.error("⚠️ Please enter your API key in the sidebar before asking a question.")
+    active_key = os.environ.get("GROQ_API_KEY", "")
+    if not active_key:
+        st.error("⚠️ Please configure your GROQ_API_KEY in the sidebar or via .streamlit/secrets.toml before asking questions.")
         st.stop()
 
     with st.spinner("🔎 Searching the report and extracting answer…"):
-        q_type = classify_question(question)
-        pages = st.session_state.pages
-        index = st.session_state.index
+        try:
+            q_type = classify_question(question)
+            pages = st.session_state.pages
+            index = st.session_state.index
 
-        if q_type == "comparison":
-            answer = answer_comparison(question, index, pages)
-        else:
-            cfg = get_retrieval_config(q_type)
-            chunks = index.search(
-                question,
-                top_k=cfg["top_k"],
-                boost_tables=cfg["boost_tables"],
-            )
-            answer = extract_answer(question, q_type, chunks)
-            answer = verify_answer(answer, pages)
+            if q_type == "comparison":
+                answer = answer_comparison(question, index, pages)
+            else:
+                cfg = get_retrieval_config(q_type)
+                chunks = index.search(
+                    question,
+                    top_k=cfg["top_k"],
+                    boost_tables=cfg["boost_tables"],
+                )
+                answer = extract_answer(question, q_type, chunks)
+                answer = verify_answer(answer, pages)
 
-        answer["question"] = question
-        answer["question_type"] = q_type
-        st.session_state.session_results.append(answer)
+            answer["question"] = question
+            answer["question_type"] = q_type
+            st.session_state.session_results.append(answer)
+        except Exception as e:
+            st.error(f"❌ Error extracting answer: {e}")
+            st.stop()
+
 
     # ──────────────────────────────────────────────────────────────────────────
     # Result card
@@ -394,7 +405,7 @@ if st.session_state.session_results:
 
     import pandas as pd
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
     # Download Excel
     excel_bytes = build_excel(st.session_state.session_results)

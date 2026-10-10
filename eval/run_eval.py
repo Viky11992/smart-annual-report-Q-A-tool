@@ -210,7 +210,12 @@ def run_eval(pdf_path: str, questions_path: str, output_dir: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Q&A evaluation over a PDF report.")
-    parser.add_argument("--pdf", required=True, help="Path to the annual report PDF.")
+    default_pdf = str(Path(__file__).parent.parent / "Westfarmers Report 2025.pdf")
+    parser.add_argument(
+        "--pdf",
+        default=default_pdf,
+        help="Path to the annual report PDF (default: Westfarmers Report 2025.pdf).",
+    )
     parser.add_argument(
         "--questions",
         default=str(Path(__file__).parent / "questions.csv"),
@@ -223,3 +228,5 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_eval(args.pdf, args.questions, args.output)
+
+
