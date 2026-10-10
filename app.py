@@ -236,7 +236,7 @@ st.subheader("2️⃣  Ask a Question")
 st.caption("Try one of these:")
 btn_cols = st.columns(len(EXAMPLE_QUESTIONS))
 for i, (col, eq) in enumerate(zip(btn_cols, EXAMPLE_QUESTIONS)):
-    if col.button(eq, key=f"eq_{i}", width="stretch"):
+    if col.button(eq, key=f"eq_{i}", use_container_width=True):
         st.session_state.question_input = eq
 
 question = st.text_input(
@@ -405,7 +405,7 @@ if st.session_state.session_results:
 
     import pandas as pd
     df = pd.DataFrame(rows)
-    st.dataframe(df, width="stretch", hide_index=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
     # Download Excel
     excel_bytes = build_excel(st.session_state.session_results)
