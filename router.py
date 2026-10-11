@@ -90,9 +90,9 @@ def get_retrieval_config(question_type: QuestionType) -> dict:
     - comparison: top_k=8, boost tables for year-on-year lookups
     """
     configs = {
-        "quantitative": {"top_k": 8,  "boost_tables": True},
-        "overview":     {"top_k": 10, "boost_tables": False},
-        "risk":         {"top_k": 15, "boost_tables": False},
-        "comparison":   {"top_k": 8,  "boost_tables": True},
+        "quantitative": {"top_k": 6,  "boost_tables": True},
+        "overview":     {"top_k": 6,  "boost_tables": False},
+        "risk":         {"top_k": 8,  "boost_tables": False},
+        "comparison":   {"top_k": 6,  "boost_tables": True},
     }
     return configs[question_type]

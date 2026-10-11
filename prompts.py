@@ -67,11 +67,12 @@ SYSTEM_MESSAGE = (
 # Prompt builders
 # ---------------------------------------------------------------------------
 
-def _format_chunks(chunks: list, max_total_chars: int = 14000) -> str:
+def _format_chunks(chunks: list, max_total_chars: int = 6500) -> str:
     """
     Format retrieved chunks into excerpts string.
-    Caps total characters to ~14,000 chars (~3,500 tokens) so that total prompt
-    stays safely well under the 7,500 TPM limit and processes fast.
+    Caps total characters to ~6,500 chars (~1,500 tokens) so that the entire prompt
+    stays around ~1,800-2,000 tokens, allowing 4+ questions per minute without
+    hitting Groq's 8,000 TPM limit.
     """
     parts = []
     total_chars = 0

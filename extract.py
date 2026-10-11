@@ -130,24 +130,33 @@ def _call_groq(prompt: str, model: str) -> str:
 import time as _time  # aliased to avoid shadowing
 
 
-def _call_with_retry(fn, *args, max_retries: int = 3, **kwargs) -> str:
+def _call_with_retry(fn, *args, max_retries: int = 4, **kwargs) -> str:
     """
-    Call fn(*args, **kwargs) with exponential backoff on transient failures.
+    Call fn(*args, **kwargs) with smart backoff on transient failures.
     Retries on RateLimitError, APIStatusError (429), or generic connection errors.
+    Automatically parses Groq's exact wait recommendation (e.g. 'try again in 12.3s')
+    to ensure subsequent retries succeed without failing the request.
     """
-    delay = 2.0
+    delay = 6.0
     last_exc: Exception | None = None
     for attempt in range(max_retries):
         try:
             return fn(*args, **kwargs)
         except Exception as exc:
-            exc_str = str(exc).lower()
+            exc_str = str(exc)
+            exc_lower = exc_str.lower()
             # Only retry on rate-limit / transient errors
-            if any(kw in exc_str for kw in ("rate", "429", "timeout", "connection", "overloaded")):
+            if any(kw in exc_lower for kw in ("rate", "429", "timeout", "connection", "overloaded", "tokens per minute")):
                 last_exc = exc
                 if attempt < max_retries - 1:
-                    _time.sleep(delay)
-                    delay *= 2  # exponential backoff
+                    # Check if Groq gave an explicit cooldown in the error message
+                    match = re.search(r"try again in (\d+(?:\.\d+)?)\s*s", exc_str, re.IGNORECASE)
+                    if match:
+                        sleep_time = float(match.group(1)) + 1.5
+                    else:
+                        sleep_time = delay
+                        delay = min(delay * 2, 30.0)
+                    _time.sleep(sleep_time)
             else:
                 raise  # non-retryable error — propagate immediately
     raise last_exc  # type: ignore[misc]

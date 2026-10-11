@@ -122,18 +122,26 @@ def _table_to_markdown(table: list[list[Optional[str]]]) -> str:
 # ---------------------------------------------------------------------------
 
 _DIGIT_RE = re.compile(r"\d")
+_FINANCIAL_TABLE_RE = re.compile(
+    r"(income statement|balance sheet|cash flow|statement of profit|"
+    r"financial statement|financial summary|statement of financial position|"
+    r"segment result|remuneration report|five-year summary)",
+    re.IGNORECASE,
+)
 
 
-def _is_financial_page(text: str, digit_threshold: int = 50) -> bool:
+def _is_financial_page(text: str, digit_threshold: int = 150) -> bool:
     """
-    Heuristic check to determine if a page looks financial / tabular.
-    Returns True if the page contains at least `digit_threshold` digits.
-    This avoids running heavy pdfplumber parsing on pure narrative / text pages.
+    Targeted check to determine if a page contains primary financial statement tables.
+    Requires high digit density (>=150) AND financial statement keywords in the page header.
+    This runs table parsing only on true financial statement tables, completing ingestion
+    in seconds instead of minutes.
     """
     if not text:
         return False
-    digits = len(_DIGIT_RE.findall(text))
-    return digits >= digit_threshold
+    if len(_DIGIT_RE.findall(text)) < digit_threshold:
+        return False
+    return bool(_FINANCIAL_TABLE_RE.search(text[:600]))
 
 
 def ingest_pdf(
@@ -145,7 +153,7 @@ def ingest_pdf(
 
     Strategy:
     - PyMuPDF (fitz) for fast, low-memory plain-text extraction and page iteration.
-    - PyMuPDF native find_tables() on financial pages (runs in C++, extremely fast & low RAM).
+    - PyMuPDF native find_tables() targeted on financial statement pages.
     - Keep only {pdf_page, printed_page, text, tables_markdown} per page.
     - Never keep page images or raw PDF bytes after extraction.
     - Closes documents in finally blocks.
@@ -179,7 +187,8 @@ def ingest_pdf(
                 except Exception:
                     pass  # If table extraction fails for a page, continue
 
-            has_table = len(tables_md) > 0
+            digits_count = len(_DIGIT_RE.findall(plain_text))
+            has_table = (len(tables_md) > 0) or (digits_count >= 80)
 
             pages.append(PageData(
                 pdf_index=idx,

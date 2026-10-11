@@ -111,8 +111,8 @@ def answer_comparison(
 
     for year in [year_a, year_b]:
         year_q = _make_year_question(question, year)
-        # Use top_k=10 and table boost for each year-specific sub-query
-        chunks = index.search(year_q, top_k=10, boost_tables=True)
+        # Use top_k=6 and table boost for each year-specific sub-query
+        chunks = index.search(year_q, top_k=6, boost_tables=True)
         ans = extract_answer(year_q, "quantitative", chunks)
         ans = verify_answer(ans, pages)
         results[year] = ans

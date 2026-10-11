@@ -54,18 +54,48 @@ import tempfile
 # Cached PDF ingestion (keyed by file hash — zero duplicate in-memory data copies)
 # ──────────────────────────────────────────────────────────────────────────────
 MAX_PDF_BYTES = 35 * 1024 * 1024  # 35 MB hard limit for Streamlit Cloud stability
+MAX_SESSION_HISTORY = 20  # Limit session history to avoid unbounded memory growth
 
 
 @st.cache_resource(show_spinner=False)
-def _cached_ingest(file_hash: str, tmp_pdf_path: str):
-    """
-    Ingest and index a PDF, cached by sha256 hash.
-    Using @st.cache_resource stores the objects by reference rather than
-    pickling/duplicating them into memory.
-    """
-    pages = ingest_pdf(tmp_pdf_path)
-    idx = AnnualReportIndex(pages)
-    return pages, idx
+def _document_store() -> dict[str, tuple[list[PageData], AnnualReportIndex]]:
+    """In-memory shared document store with LRU eviction (max 2 documents across sessions)."""
+    return {}
+
+
+def get_document_index(file_hash: str):
+    """Retrieve indexed document by sha256 hash."""
+    return _document_store().get(file_hash, (None, None))
+
+
+def set_document_index(file_hash: str, pages: list[PageData], idx: AnnualReportIndex):
+    """Store indexed document in cache with LRU eviction of old documents."""
+    store = _document_store()
+    if len(store) >= 2 and file_hash not in store:
+        oldest = next(iter(store))
+        del store[oldest]
+    store[file_hash] = (pages, idx)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_build_excel(results: list[dict[str, Any]]) -> bytes:
+    """Cache generated Excel binary so it's not regenerated on every Streamlit rerun."""
+    return build_excel(results)
+
+
+@st.cache_data(show_spinner=False, max_entries=30)
+def _cached_query(question: str, q_type: str, pdf_hash: str, model_name: str, _index: Any, _pages: Any) -> dict[str, Any]:
+    """Cache LLM query answers by question, document hash, and model name to save tokens."""
+    if q_type == "comparison":
+        return answer_comparison(question, _index, _pages)
+    cfg = get_retrieval_config(q_type)
+    chunks = _index.search(
+        question,
+        top_k=cfg["top_k"],
+        boost_tables=cfg["boost_tables"],
+    )
+    ans = extract_answer(question, q_type, chunks)
+    return verify_answer(ans, _pages)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -94,14 +124,12 @@ CONFIDENCE_COLORS = {
 # ──────────────────────────────────────────────────────────────────────────────
 # Session state initialisation
 # ──────────────────────────────────────────────────────────────────────────────
-if "pages" not in st.session_state:
-    st.session_state.pages = None
-if "index" not in st.session_state:
-    st.session_state.index = None
 if "pdf_name" not in st.session_state:
     st.session_state.pdf_name = None
 if "pdf_hash" not in st.session_state:
     st.session_state.pdf_hash = None
+if "uploaded_file_sig" not in st.session_state:
+    st.session_state.uploaded_file_sig = None
 if "session_results" not in st.session_state:
     st.session_state.session_results = []
 if "question_input" not in st.session_state:
@@ -175,36 +203,41 @@ if uploaded_file is not None:
         )
         st.stop()
 
-    # Read uploaded file content once to compute hash and write to temp file
-    file_bytes = uploaded_file.getvalue()
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
-
-    # ── Only re-ingest if the file hash actually changed ──────────────────
-    if file_hash != st.session_state.pdf_hash:
+    # ── Only stream & ingest if file signature changed (prevents re-reading on every rerun) ──
+    file_sig = f"{uploaded_file.name}_{uploaded_file.size}"
+    if file_sig != st.session_state.uploaded_file_sig:
         progress_bar = st.progress(0, text="Starting document ingestion…")
         status_placeholder = st.empty()
 
-        # Save to temp file on disk so PyMuPDF can read directly without holding bytes in memory
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(file_bytes)
-            tmp_path = tmp.name
-
-        # Free the uploaded bytes immediately
-        del file_bytes
-
+        # Stream file to disk in 1 MB chunks to calculate hash and avoid RAM spikes (no getvalue())
+        hasher = hashlib.sha256()
+        tmp_path = None
         try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                uploaded_file.seek(0)
+                while True:
+                    chunk = uploaded_file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    hasher.update(chunk)
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            file_hash = hasher.hexdigest()
+
+            def update_progress(current_page: int, total_pages: int):
+                pct = int((current_page / total_pages) * 90)
+                progress_bar.progress(pct, text=f"Processing page {current_page} of {total_pages}…")
+
             with st.spinner(f"Reading **{uploaded_file.name}** — extracting text and tables…"):
-                def update_progress(current_page: int, total_pages: int):
-                    pct = int((current_page / total_pages) * 100)
-                    progress_bar.progress(pct, text=f"Processing page {current_page} of {total_pages}…")
-
                 pages = ingest_pdf(tmp_path, progress_callback=update_progress)
+                progress_bar.progress(95, text="Building BM25 search index…")
                 idx = AnnualReportIndex(pages)
+                set_document_index(file_hash, pages, idx)
 
-            st.session_state.pages = pages
-            st.session_state.index = idx
             st.session_state.pdf_name = uploaded_file.name
             st.session_state.pdf_hash = file_hash
+            st.session_state.uploaded_file_sig = file_sig
             st.session_state.session_results = []  # reset on new document
             progress_bar.progress(100, text="Indexing complete!")
             time.sleep(0.3)
@@ -215,15 +248,21 @@ if uploaded_file is not None:
             st.stop()
         finally:
             import gc
-            gc.collect()
-            if os.path.exists(tmp_path):
+            if tmp_path and os.path.exists(tmp_path):
                 try:
                     os.unlink(tmp_path)
                 except Exception:
                     pass
+            gc.collect()
 
-elif st.session_state.pdf_name:
-    st.info(f"📄 Currently loaded: **{st.session_state.pdf_name}**")
+elif st.session_state.uploaded_file_sig is not None:
+    # User removed uploaded file: reset state and trigger gc
+    st.session_state.pdf_name = None
+    st.session_state.pdf_hash = None
+    st.session_state.uploaded_file_sig = None
+    st.session_state.session_results = []
+    import gc
+    gc.collect()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -250,13 +289,13 @@ st.session_state.question_input = question
 ask_btn = st.button(
     "🔍 Get Answer",
     type="primary",
-    disabled=(st.session_state.index is None or not question.strip()),
+    disabled=(not st.session_state.pdf_hash or not question.strip()),
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Answer pipeline
 # ──────────────────────────────────────────────────────────────────────────────
-if ask_btn and question.strip() and st.session_state.index is not None:
+if ask_btn and question.strip() and st.session_state.pdf_hash:
     # Check API key
     active_key = os.environ.get("GROQ_API_KEY", "")
     if not active_key:
@@ -265,28 +304,26 @@ if ask_btn and question.strip() and st.session_state.index is not None:
 
     with st.spinner("🔎 Searching the report and extracting answer…"):
         try:
+            pages, index = get_document_index(st.session_state.pdf_hash)
+            if pages is None or index is None:
+                st.error("⚠️ Document cache expired to protect memory limits. Please re-select or re-upload your PDF.")
+                st.stop()
+
             q_type = classify_question(question)
-            pages = st.session_state.pages
-            index = st.session_state.index
-
-            if q_type == "comparison":
-                answer = answer_comparison(question, index, pages)
-            else:
-                cfg = get_retrieval_config(q_type)
-                chunks = index.search(
-                    question,
-                    top_k=cfg["top_k"],
-                    boost_tables=cfg["boost_tables"],
-                )
-                answer = extract_answer(question, q_type, chunks)
-                answer = verify_answer(answer, pages)
-
+            active_model = os.environ.get("LLM_MODEL", "openai/gpt-oss-20b")
+            raw_answer = _cached_query(question.strip(), q_type, st.session_state.pdf_hash, active_model, index, pages)
+            answer = dict(raw_answer)  # shallow copy to avoid mutating cached object
             answer["question"] = question
             answer["question_type"] = q_type
             st.session_state.session_results.append(answer)
+            if len(st.session_state.session_results) > MAX_SESSION_HISTORY:
+                st.session_state.session_results.pop(0)
         except Exception as e:
             st.error(f"❌ Error extracting answer: {e}")
             st.stop()
+        finally:
+            import gc
+            gc.collect()
 
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -407,8 +444,8 @@ if st.session_state.session_results:
     df = pd.DataFrame(rows)
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Download Excel
-    excel_bytes = build_excel(st.session_state.session_results)
+    # Download Excel (cached so we don't rebuild workbook on every interaction)
+    excel_bytes = _cached_build_excel(st.session_state.session_results)
     st.download_button(
         label="⬇️ Download Full Results (Excel)",
         data=excel_bytes,
@@ -418,6 +455,8 @@ if st.session_state.session_results:
 
     if st.button("🗑️ Clear session"):
         st.session_state.session_results = []
+        import gc
+        gc.collect()
         st.rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
